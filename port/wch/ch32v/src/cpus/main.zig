@@ -219,7 +219,7 @@ pub fn unhandled() callconv(riscv_calling_convention) void {
 pub const startup_logic = struct {
     extern fn microzig_main() noreturn;
 
-    pub fn _start() callconv(.naked) void {
+    pub fn _start() callconv(.c) noreturn {
         // Set global pointer.
         asm volatile (
             \\.option push
@@ -279,10 +279,8 @@ pub const startup_logic = struct {
         });
 
         // Initialize the system.
-        @export(&startup_logic._system_init, .{ .name = "_system_init" });
-        asm volatile (
-            \\jal _system_init
-        );
+        //@export(&startup_logic._system_init, .{ .name = "_system_init" });
+        startup_logic._system_init();
 
         // Load the address of the `microzig_main` function into the `mepc` register
         // and transfer control to it using the `mret` instruction.
@@ -295,6 +293,7 @@ pub const startup_logic = struct {
         // machine mode and we are switching to machine mode, but normally this could switch us to
         // user mode.
         asm volatile ("mret");
+        unreachable;
     }
 
     inline fn initialize_system_memories() void {
@@ -309,10 +308,6 @@ pub const startup_logic = struct {
             \\    addi a1, a1, 4
             \\    blt a1, a2, clear_bss_loop
             \\clear_bss_done:
-        );
-
-        // Copy .data from FLASH to RAM.
-        asm volatile (
             \\    la a0, microzig_data_load_start
             \\    la a1, microzig_data_start
             \\    la a2, microzig_data_end
@@ -324,10 +319,10 @@ pub const startup_logic = struct {
             \\    addi a1, a1, 4
             \\    bne a1, a2, copy_data_loop
             \\copy_done:
-        );
+            ::: .{ .x10 = true, .x11 = true, .x12 = true, .x13 = true, .memory = true });
     }
 
-    fn _system_init() callconv(.c) void {
+    inline fn _system_init() void {
         cpu_impl.system_init(microzig.chip);
     }
 
