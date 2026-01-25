@@ -279,8 +279,8 @@ pub const startup_logic = struct {
         });
 
         // Initialize the system.
-        //@export(&startup_logic._system_init, .{ .name = "_system_init" });
-        startup_logic._system_init();
+        @export(&startup_logic._system_init, .{ .name = "_system_init" });
+        _system_init();
 
         // Load the address of the `microzig_main` function into the `mepc` register
         // and transfer control to it using the `mret` instruction.
@@ -322,7 +322,7 @@ pub const startup_logic = struct {
             ::: .{ .x10 = true, .x11 = true, .x12 = true, .x13 = true, .memory = true });
     }
 
-    inline fn _system_init() void {
+    fn _system_init() callconv(.c) void {
         cpu_impl.system_init(microzig.chip);
     }
 
