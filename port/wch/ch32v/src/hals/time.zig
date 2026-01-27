@@ -122,8 +122,11 @@ pub fn init() void {
 /// };
 /// ```
 pub fn tim2_handler() callconv(cpu.riscv_calling_convention) void {
+    // Enter critical section
+    const restore = cpu.csr.mstatus.read_clear(.{ .mie = 1 });
     // Increment the tick counter
     ticks_us +%= tick_interval_us;
+    cpu.csr.mstatus.modify(.{ .mie = restore.mie });
 
     // Clear the update interrupt flag
     TIM2.INTFR.modify(.{ .UIF = 0 });
