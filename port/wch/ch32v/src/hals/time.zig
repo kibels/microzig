@@ -9,7 +9,7 @@ const PFIC = peripherals.PFIC;
 const RCC = peripherals.RCC;
 const TIM2 = peripherals.TIM2;
 
-/// Safely read the 64-bit SysTick counter (CNTH:CNTL).
+/// Safely read a 64-bit counter (CNTH:CNTL).
 ///
 /// This implements the standard double-read pattern to avoid race conditions:
 /// 1. Read high register
@@ -19,18 +19,25 @@ const TIM2 = peripherals.TIM2;
 /// 5. Otherwise, the low register rolled over between reads - retry
 ///
 /// This ensures we never get a value where low has rolled over but we read the old high value.
-inline fn read_stk_cnt() u64 {
+inline fn atomic_read_time_u64(phigh: *volatile u32, plow: *volatile u32) u64 {
     while (true) {
-        const high1: u32 = PFIC.STK_CNTH.raw;
-        const low: u32 = PFIC.STK_CNTL.raw;
-        const high2: u32 = PFIC.STK_CNTH.raw;
+        const high1: u32 = phigh.*;
+        const low: u32 = plow.*;
+        const high2: u32 = phigh.*;
 
         // If high didn't change, we have a consistent reading
         if (high1 == high2) {
             return (@as(u64, high1) << 32) | @as(u64, low);
         }
-        // Otherwise low rolled over between reads, try again
     }
+}
+
+inline fn get_high_low_u64(ptr: *u64) struct { *u32, *u32 } {
+    return .{ @ptrCast(@as([*]u32, @ptrCast(ptr)) + 1), @ptrCast(ptr) };
+}
+
+inline fn read_stk_cnt() u64 {
+    return atomic_read_time_u64(&PFIC.STK_CNTH.raw, &PFIC.STK_CNTL.raw);
 }
 
 /// Global tick counter in microseconds.
@@ -125,9 +132,8 @@ pub fn tim2_handler() callconv(cpu.riscv_calling_convention) void {
 /// Get the current time since boot.
 pub fn get_time_since_boot() time.Absolute {
     // Read the tick counter
-    // NOTE: On RISC-V, we rely on the fact that reading a u64 is atomic on 32-bit systems when
-    // properly aligned. The worst case is reading a slightly stale value.
-    return time.Absolute.from_us(ticks_us);
+    const phigh, const plow = get_high_low_u64(&ticks_us);
+    return time.Absolute.from_us(atomic_read_time_u64(phigh, plow));
 }
 
 /// Sleep for the specified number of milliseconds.
@@ -174,7 +180,7 @@ pub fn delay_us(us: u32) void {
     while (true) {
         const current = read_stk_cnt();
 
-        if (current - start >= ticks) break;
+        if (current -% start >= ticks) break;
         asm volatile ("" ::: .{ .memory = true });
     }
 }
