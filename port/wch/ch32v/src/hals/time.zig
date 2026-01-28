@@ -3,6 +3,7 @@ const microzig = @import("microzig");
 const cpu = microzig.cpu;
 const board = microzig.board;
 const time = microzig.drivers.time;
+const enter_critical_section = microzig.interrupt.enter_critical_section;
 
 const peripherals = microzig.chip.peripherals;
 const PFIC = peripherals.PFIC;
@@ -32,8 +33,13 @@ inline fn atomic_read_time_u64(phigh: *volatile u32, plow: *volatile u32) u64 {
     }
 }
 
-inline fn get_high_low_u64(ptr: *u64) struct { *u32, *u32 } {
-    return .{ @ptrCast(@as([*]u32, @ptrCast(ptr)) + 1), @ptrCast(ptr) };
+const Ticks = packed union {
+    raw: u64,
+    word: packed struct(u64) { l: u32, h: u32 },
+};
+
+inline fn get_ticks_u64(ptr: *u64) *Ticks {
+    return @ptrCast(ptr);
 }
 
 inline fn read_stk_cnt() u64 {
@@ -122,11 +128,10 @@ pub fn init() void {
 /// };
 /// ```
 pub fn tim2_handler() callconv(cpu.riscv_calling_convention) void {
-    // Enter critical section
-    const restore = cpu.csr.mstatus.read_clear(.{ .mie = 1 });
+    const cs = enter_critical_section();
+    defer cs.leave();
     // Increment the tick counter
     ticks_us +%= tick_interval_us;
-    cpu.csr.mstatus.modify(.{ .mie = restore.mie });
 
     // Clear the update interrupt flag
     TIM2.INTFR.modify(.{ .UIF = 0 });
@@ -135,8 +140,8 @@ pub fn tim2_handler() callconv(cpu.riscv_calling_convention) void {
 /// Get the current time since boot.
 pub fn get_time_since_boot() time.Absolute {
     // Read the tick counter
-    const phigh, const plow = get_high_low_u64(&ticks_us);
-    return time.Absolute.from_us(atomic_read_time_u64(phigh, plow));
+    const ticks = get_ticks_u64(&ticks_us);
+    return time.Absolute.from_us(atomic_read_time_u64(&ticks.word.h, &ticks.word.l));
 }
 
 /// Sleep for the specified number of milliseconds.
