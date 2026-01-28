@@ -64,6 +64,8 @@ fn init_delay_counter() void {
     PFIC.STK_CTLR.modify(.{
         // Turn on the system counter STK
         .STE = 1,
+        // Upcounting
+        .MODE = 0,
         // Disable counter interrupt
         .STIE = 0,
         // HCLK for time base (i.e. count 8x faster)
