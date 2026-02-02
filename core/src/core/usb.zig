@@ -219,8 +219,10 @@ pub const Config = struct {
     bcd_device: types.Version,
     /// String descriptor 0.
     language: descriptor.String.Language = .English,
-    /// Serial number string.
+    /// Default serial number string.
     serial: []const u8,
+    /// Optional runtime function to get serial number
+    get_serial: ?*const fn () []const u8 = null,
     /// Largest packet length the hardware supports. Must be a power of 2 and at least 8.
     max_supported_packet_size: types.Len,
     /// Currently only a single configuration is supported.
@@ -408,6 +410,7 @@ pub fn DeviceController(config: Config, driver_args: config.DriverArgs()) type {
             .drv = descriptor_parse_result.drivers_ep,
         };
         const DriverAlloc = descriptor_parse_result.DriverAlloc;
+        const get_serial = config.get_serial;
 
         /// If not zero, change the device address at the next opportunity.
         /// Necessary because when the host sets the device address,
@@ -567,9 +570,17 @@ pub fn DeviceController(config: Config, driver_args: config.DriverArgs()) type {
                 .Device => asBytes(&device_descriptor),
                 .DeviceQualifier => asBytes(comptime &device_descriptor.qualifier()),
                 .Configuration => asBytes(&config_descriptor),
-                .String => if (desc_idx < string_descriptors.len)
-                    string_descriptors[desc_idx].data
-                else {
+                .String => if (desc_idx < string_descriptors.len) {
+                    if (desc_idx == device_descriptor.serial_s) {
+                        if (get_serial) |get_s| {
+                            return get_s();
+                        } else {
+                            string_descriptors[desc_idx].data;
+                        }
+                    } else {
+                        return string_descriptors[desc_idx].data;
+                    }
+                } else {
                     log.warn(
                         "Descriptor index ({}) out of range ({})",
                         .{ desc_idx, string_descriptors.len },

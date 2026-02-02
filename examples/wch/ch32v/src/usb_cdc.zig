@@ -12,6 +12,13 @@ const RCC = microzig.chip.peripherals.RCC;
 const AFIO = microzig.chip.peripherals.AFIO;
 const PFIC = microzig.chip.peripherals.PFIC;
 
+const ESIG_UNIID1_T = microzig.mmio.Mmio(packed struct(u32) {
+    uid1: u32,
+});
+const ESIG = struct {
+    const UNIID1: *volatile ESIG_UNIID1_T = @ptrFromInt(0x1FFFF7E8);
+};
+
 const usart = hal.usart.instance.USART1;
 
 const usart_tx_pin = gpio.Pin.init(0, 9); // PA9
@@ -26,13 +33,21 @@ pub const microzig_options = microzig.Options{
     },
 };
 
+var serial_str: [24:0]u8 align(2) = @splat(0);
+var serial_slice: []const u8 = "notset";
+
+pub fn serial_hook() []const u8 {
+    return serial_slice;
+}
+
 const USBController = usb.DeviceController(.{
     .bcd_usb = .v2_00,
     .device_triple = .unspecified,
     .vendor = .{ .id = 0x2E8A, .str = "MicroZig" },
-    .product = .{ .id = 0x000A, .str = "ch32v307 Test Device" },
+    .product = .{ .id = 0x000A, .str = "CH32V_CDC_Demo" },
     .bcd_device = .v1_00,
-    .serial = "someserial",
+    .serial = "00000000",
+    .get_serial = &serial_hook,
     .max_supported_packet_size = 512,
     .configurations = &.{.{
         .attributes = .{ .self_powered = false },
@@ -53,6 +68,11 @@ pub fn main() !void {
     // Board brings up clocks and time
     microzig.board.init();
     microzig.hal.init();
+
+    var tmp_serial: [12:0]u8 = @splat(0);
+    const serial_raw = std.fmt.bufPrint(&tmp_serial, "{x}", .{ESIG.UNIID1.raw}) catch &.{};
+    const utf16_res = try usb.descriptor.String.from_var_str(&serial_str, serial_raw);
+    serial_slice = utf16_res.data;
 
     // Enable peripheral clocks for USART1 and GPIOA
     RCC.APB2PCENR.modify(.{
@@ -86,6 +106,7 @@ pub fn main() !void {
                 i += 1;
                 std.log.info("cdc test: {}", .{i});
 
+                usb_cdc_write(&drivers.serial, "{s}\r\n", .{&serial_str});
                 usb_cdc_write(&drivers.serial, "This is very very very very very very very very long text sent from ch32v30x by USB CDC to your device: {}\r\n", .{i});
             }
 

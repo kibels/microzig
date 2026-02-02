@@ -25,6 +25,13 @@ pub const Type = enum(u8) {
     _,
 };
 
+pub const StringType = enum(u8) {
+    Manufacturer,
+    Product,
+    Serial,
+    _,
+};
+
 /// Describes a device. This is the most broad description in USB and is
 /// typically the first thing the host asks for.
 pub const Device = extern struct {
@@ -163,6 +170,13 @@ pub const String = struct {
         @setEvalBranchQuota(10000);
         const encoded: []const u8 = std.mem.sliceAsBytes(std.unicode.utf8ToUtf16LeStringLiteral(string));
         return .{ .data = &[2]u8{ encoded.len + 2, @intFromEnum(Type.String) } ++ encoded };
+    }
+
+    pub fn from_var_str(buffer: []align(2) u8, string: []const u8) !@This() {
+        const encoded_len = try std.unicode.utf8ToUtf16Le(@ptrCast(buffer[2..]), string);
+        const encoded: []const u8 = std.mem.sliceAsBytes(buffer[2 .. encoded_len + 2]);
+        @memcpy(buffer[0..2], &[2]u8{ @intCast(encoded.len + 2), @intFromEnum(Type.String) });
+        return .{ .data = buffer[0 .. encoded.len + 2] };
     }
 };
 
