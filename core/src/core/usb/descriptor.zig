@@ -174,7 +174,7 @@ pub const String = struct {
 
     pub fn from_var_str(buffer: []align(2) u8, string: []const u8) !@This() {
         const encoded_len = try std.unicode.utf8ToUtf16Le(@ptrCast(buffer[2..]), string);
-        const encoded: []const u8 = std.mem.sliceAsBytes(buffer[2 .. encoded_len + 2]);
+        const encoded: []const u8 = std.mem.sliceAsBytes(buffer[2 .. encoded_len * 2 + 2]);
         @memcpy(buffer[0..2], &[2]u8{ @intCast(encoded.len + 2), @intFromEnum(Type.String) });
         return .{ .data = buffer[0 .. encoded.len + 2] };
     }
